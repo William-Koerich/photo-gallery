@@ -1,7 +1,12 @@
-import { ref, onMounted, watch } from 'vue';
-import { Camera, CameraResultType, CameraSource, Photo } from '@capacitor/camera';
-import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Storage } from '@capacitor/storage'
+import { isPlatform } from '@ionic/vue';
+import { ref, onMounted, watch } from 'vue';
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { 
+  Photo, 
+  Camera, 
+  CameraSource, 
+  CameraResultType } from '@capacitor/camera';
 
 export interface UserPhoto {
   path?: string;
@@ -25,12 +30,15 @@ export function usePhotoGallery() {
     const photoList = await Storage.get({ key: PHOTO_STORAGE });
     const photosInStorage = photoList.value ? JSON.parse(photoList.value) : [];
 
-    for (const photo of photosInStorage) {
-      const file = await Filesystem.readFile({
+    if (!isPlatform('hybrid')) {
+      for (const photo of photosInStorage) {
+        const file = await Filesystem.readFile({
           path: photo.filepath,
           directory: Directory.Data
-      });
-      photo.webviewPath = `data:image/jpeg;base64,${file.data}`;
+        });
+        // Web platform only: Load the photo as base64 data
+        photo.webviewPath = `data:image/jpeg;base64,${file.data}`;
+      }
     }
 
     photos.value = photosInStorage;
@@ -54,9 +62,19 @@ export function usePhotoGallery() {
   ): Promise<Photo> => {
   
     // Fetch the photo, read as a blob, then convert to base64 format
-    const response = await fetch(photo.webPath!);
-    const blob = await response.blob();
-    const base64Data = (await convertBlobToBase64(blob)) as string;
+    let base64Data: string;
+    // "hybrid" will detect mobile - iOS or Android
+    if (isPlatform('hybrid')) {
+      const file = await Filesystem.readFile({
+        path: photo.path!
+      });
+      base64Data = file.data;
+    } else {
+      // Fetch the photo, read as a blob, then convert to base64 format
+      const response = await fetch(photo.webPath!);
+      const blob = await response.blob();
+      base64Data = await convertBlobToBase64(blob) as string;
+    }
   
     await Filesystem.writeFile({
       path: fileName,
